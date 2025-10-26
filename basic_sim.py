@@ -2,13 +2,14 @@ import logging
 from argparse import Namespace
 from dataclasses import dataclass
 from logging import getLogger
-from typing import Callable, Annotated, overload
+from typing import Annotated, Literal, overload, Callable
 
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Figure
-from numpy import arange, array, conj, ndarray, pi, zeros, zeros_like, exp, iscomplexobj, newaxis
+from numpy import random, arange, array, conj, ndarray, pi, zeros_like, exp, iscomplexobj, newaxis, zeros, vstack, \
+    sum as asum
+from numpy.fft import fft, ifft
 from numpy.linalg import norm
-from scipy.signal import fftconvolve
 
 
 ################################################
@@ -18,6 +19,37 @@ speed_of_light = 299792458.0
 
 # Vector type for 3D vectors
 Vec3 = Annotated[ndarray, (3,)]
+
+def next_fast_len(x: int) -> int:
+    return 1 if x <= 1 else 1 << (x - 1).bit_length()
+####
+
+def fftconvolve(
+        a: ndarray, b: ndarray, mode: Literal['full', 'same', 'valid'] = 'full',
+) -> ndarray:
+    # Determine output size
+    s1 = a.shape[0]
+    s2 = b.shape[0]
+    n = next_fast_len(s1 + s2 - 1)  # efficient FFT length
+
+    # FFT-based convolution
+    A = fft(a, n)
+    B = fft(b, n)
+    c = ifft(A * B)
+
+    # Slice according to mode
+    if mode == 'full':
+        return c[:s1 + s2 - 1]
+    elif mode == 'same':
+        start = (s2 - 1) // 2
+        return c[start:start + s1]
+    elif mode == 'valid':
+        start = s2 - 1
+        return c[start:start + s1 - s2 + 1]
+    else:
+        raise ValueError("mode must be 'full', 'same', or 'valid'")
+    ####
+####
 
 @overload
 def time_from_range_2way(distance: float) -> float: ...
@@ -44,8 +76,24 @@ class Scatterer:
     rcs_amplitude: complex  # complex amplitude (includes RCS/phase)
 ####
 
+@dataclass
+class GroupedScatterers:
+    positions: Annotated[ndarray, (..., 3)]
+    velocities: Annotated[ndarray, (..., 3)]
+    rcs_amplitudes: Annotated[ndarray, (...,)]
+####
+
+def create_group_from_individual_scatterers(scatterers: list[Scatterer]) -> GroupedScatterers:
+    out = GroupedScatterers(
+        positions=vstack([s.position for s in scatterers]),
+        velocities=vstack([s.velocity for s in scatterers]),
+        rcs_amplitudes=array([s.rcs_amplitude for s in scatterers]),
+    )
+    return out
+####
+
 def simulate_received_baseband(
-        scatterers: list[Scatterer],
+        grouped_scatterers: GroupedScatterers,
         rx_baseband: Callable[[ndarray, ndarray], ndarray],
         t_rx: ndarray,
         tx_power: float = 1.0,
@@ -54,20 +102,21 @@ def simulate_received_baseband(
     if radar_pos is None:
         radar_pos = zeros(3, dtype=float)
     ####
-    rx = zeros_like(t_rx, dtype=complex)
+    gs = grouped_scatterers
     # For each scatterer compute R(t), tau(t), amplitude, delayed waveform, and carrier phase
     K = (tx_power ** .5) / (4 * pi)
-    for s in scatterers:
-        # compute instantaneous 3D position for each t (r0 + v*t)
-        pos_t = (s.velocity[newaxis, ...] * t_rx[..., newaxis]) + (s.position - radar_pos)[newaxis, ...]
-        R_t = norm(pos_t, axis=-1)
-
-        # \boxed{s_\text{rx}(t) = s(t - \tau(t)) \cdot e^{- j 2 \pi f_c \tau(t)}}
-        tau_t = time_from_range_2way(R_t)
-        s_rx = rx_baseband(t_rx, tau_t)
-        amp = K * (R_t ** 2) * s.rcs_amplitude
-        rx += s_rx * amp
-    ####
+    pos_t = (
+            (gs.velocities[newaxis, ...] * t_rx[..., newaxis, newaxis]) +
+            (gs.positions - radar_pos[newaxis, ...])[newaxis, ...]
+    )
+    log.debug(f'{pos_t.shape=}')
+    R_t = norm(pos_t, axis=-1)
+    log.debug(f'{R_t.shape=}')
+    # \boxed{s_\text{rx}(t) = s(t - \tau(t)) \cdot e^{- j 2 \pi f_c \tau(t)}}
+    tau_t = time_from_range_2way(R_t)
+    s_rx = rx_baseband(t_rx[..., newaxis], tau_t)
+    amp = K / (R_t ** 2) * gs.rcs_amplitudes[newaxis, ...]
+    rx = asum(s_rx * amp, axis=-1)
     return rx
 ####
 
@@ -86,7 +135,6 @@ def make_lfm_chirp(bw: float, T: float) -> Callable[[ndarray], ndarray]:
     k = 1j * pi * bw / T
     lb = -T / 2.
     rb = T / 2.
-    print(f'{k=}')
     def w(t: ndarray) -> ndarray:
         out = zeros_like(t, dtype=complex)
         mask = (lb <= t) & (t <= rb)
@@ -211,9 +259,16 @@ def main():
         s2,
         s3,
     ]
+    for i in range(8000):
+        scatterers.append(Scatterer(
+            position=array([1300., 0., 0., ]) + random.normal(0, 10, size=3),
+            velocity=array([0.0, 0.0, 5.0]) + random.normal(0, 0.1, size=3),
+            rcs_amplitude=0.8 * exp(1j * random.uniform(0, 2 * pi)) * random.exponential(scale=.1),
+        ))
+    ####
 
     center_range = 2 * min_range
-    window_m = min_range * 1.5
+    window_m = min_range * 1.1
 
     # observation times - choose long enough to contain returns
     min_range = center_range - window_m / 2.
@@ -223,7 +278,7 @@ def main():
     dt = 1.0 / fs
     t_rx = arange(min_time, max_time, dt)
     rx = simulate_received_baseband(
-        scatterers=scatterers,
+        grouped_scatterers=create_group_from_individual_scatterers(scatterers),
         rx_baseband=rx_baseband,
         t_rx=t_rx,
         radar_pos=radar_pos,
@@ -246,7 +301,7 @@ def main():
             time_from_range_2way(center_range),
         )
     )
-    print(f'{t_rx.shape=}; {rx.shape=}; {s_mf.shape=}')
+    log.debug(f'{t_rx.shape=}; {rx.shape=}; {s_mf.shape=}')
 
     if opts.plot_matched_filter:
         figs.extend(plot_complex_signal(
