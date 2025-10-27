@@ -1,13 +1,17 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>my-app</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    <meta charset="UTF-8"/>
+    <title>3D Mesh Debug Loader</title>
+    <link rel="stylesheet" href="/styles/style.css"/>
+</head>
+<body>
+<div id="app">
+    <h2>3D Mesh Debug Viewer</h2>
+    <input type="file" id="fileInput" accept=".obj,.ply,.stl,.gltf,.glb"/>
+    <button id="loadButton">Load Model</button>
+    <div id="viewer"></div>
+    <textarea id="infoBox" readonly></textarea>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>
