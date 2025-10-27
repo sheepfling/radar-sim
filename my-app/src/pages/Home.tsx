@@ -10,7 +10,7 @@ export default function Home() {
             </p>
             <ul>
                 <li>
-                    <Link to="/debug">Debug / Mesh Loader</Link>
+                    <Link to="/debug/mesh_loader">Debug / Mesh Loader</Link>
                 </li>
                 {/* Add more links here if you have other pages */}
             </ul>

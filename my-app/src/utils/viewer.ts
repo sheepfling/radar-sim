@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
-import {describeObject} from "../loaders/meshLoader";
 
 export class MeshViewer {
     private scene: THREE.Scene;
