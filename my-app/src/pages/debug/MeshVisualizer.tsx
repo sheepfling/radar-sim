@@ -126,7 +126,7 @@ export default function MeshVisualizer() {
           onChange={handleFileChange}
         />
       </div>
-      <div className="visualizer-container" style={{ flex: 1, width: '100%' }}>
+      <div className="visualizer-container" style={{ flex: 1, width: '100%vw' }}>
         <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
       </div>
     </div>
