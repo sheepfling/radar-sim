@@ -117,8 +117,8 @@ export default function MeshVisualizer() {
   };
 
   return (
-    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <div className="controls" style={{ padding: 8 }}>
         <input
           ref={fileInputRef}
           type="file"
@@ -126,7 +126,9 @@ export default function MeshVisualizer() {
           onChange={handleFileChange}
         />
       </div>
-      <div ref={mountRef} style={{ flex: 1, width: '100%' }} />
+      <div className="visualizer-container" style={{ flex: 1, width: '100%' }}>
+        <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+      </div>
     </div>
   );
 }
